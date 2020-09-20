@@ -4,14 +4,19 @@
 #include <unistd.h>
 
 #define THREAD_NUM 3
+#define TOT_THREAD 6
 
 // Global Variables
 int buffer[THREAD_NUM] = {0};
+int buffer2[THREAD_NUM] = {0};
 int correct_counter = 0;
+int correct_counter2 = 0;
 int total_counter = 0;
+int total_counter2 = 0;
 
 // Declare func
 void *do_work(void *args);
+void *do_work2(void *args);
 
 // Declare arg struct
 typedef struct arguments
@@ -82,16 +87,80 @@ void *do_work(void *args)
     }
 }
 
+// Do_work function
+void *do_work2(void *args)
+{
+    // Digest arg input
+    Args *argument = (Args *)args;
+    int local_thread_id = argument->threadID;
+    pthread_mutex_t *local_mutex = argument->lock_in;
+
+    // While loop that will keep going until the correct values are reached
+    while (correct_counter2 < 10)
+    {
+        pthread_mutex_lock(local_mutex);
+        printf("My id: %d\n", local_thread_id);
+
+        //printf("Thread %d Locking\n", local_thread_id);
+        int i;
+        for (i = 0; i < THREAD_NUM; i++)
+        {
+            //printf("Checking if element %d is available...\n", i);
+            if (buffer2[i] == 0)
+            {
+                buffer2[i] = local_thread_id;
+                //printf("Adding value %d to element %d\n", local_thread_id, i);
+                break;
+            }
+        }
+        //printf("Thread %d unlocking\n", local_thread_id);
+        pthread_mutex_unlock(local_mutex);
+        usleep(500000);
+
+        // once the buffer2 is full
+        if (buffer2[0] != 0 &&
+            buffer2[1] != 0 &&
+            buffer2[2] != 0)
+        {
+            pthread_mutex_lock(local_mutex);
+            //printf("End of buffer2 reached with thread %d at index %d\n", local_thread_id, i);
+            // check the sequence
+            if (buffer2[0] == 4 &&
+                buffer2[1] == 5 &&
+                buffer2[2] == 6)
+            {
+                // if sequence is correct, iterate the correct counter
+                correct_counter2++;
+                printf("%d%d%d\n", buffer2[0], buffer2[1], buffer2[2]);
+            }
+
+            //// Clear buffer2 ///
+            buffer2[0] = 0;
+            buffer2[1] = 0;
+            buffer2[2] = 0;
+            ////////////////////
+
+            //increment total sequence iterations
+            total_counter2++;
+            //printf("\nResults of this Iteration:\nTotal Iter: %d\nCorrect Iter: %d\n", total_counter, correct_counter);
+            pthread_mutex_unlock(local_mutex);
+        }
+    }
+}
+
 // Entry point
 int main()
 {
 
     // Declare variables
-    pthread_t worker_threads[THREAD_NUM];
+    pthread_t worker_threads[TOT_THREAD];
     pthread_mutex_t mutex;
+    pthread_mutex_t mutex2;
     Args *args[THREAD_NUM];
+    Args *args2[THREAD_NUM];
 
     pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&mutex2, NULL);
 
     //Initialize struct args
     int loop_iter;
@@ -102,7 +171,14 @@ int main()
         args[loop_iter]->lock_in = &mutex;
     }
 
-    // Create threads
+    for (loop_iter = 3; loop_iter < TOT_THREAD; loop_iter++)
+    {
+        args2[loop_iter] = (Args *)calloc(1, sizeof(Args));
+        args2[loop_iter]->threadID = loop_iter + 1;
+        args2[loop_iter]->lock_in = &mutex2;
+    }
+
+    // Create threads for 123
     for (loop_iter = 0; loop_iter < THREAD_NUM; loop_iter++)
     {
         if (pthread_create(&worker_threads[loop_iter], NULL, do_work, (void *)args[loop_iter]))
@@ -112,8 +188,18 @@ int main()
         }
     }
 
+    // Create threads for 456
+    for (loop_iter = 3; loop_iter < TOT_THREAD; loop_iter++)
+    {
+        if (pthread_create(&worker_threads[loop_iter], NULL, do_work2, (void *)args2[loop_iter]))
+        {
+            printf("Error while creating thread %d\n", loop_iter);
+            exit(1);
+        }
+    }
+
     // Join threads
-    for (loop_iter = 0; loop_iter < THREAD_NUM; loop_iter++)
+    for (loop_iter = 0; loop_iter < TOT_THREAD; loop_iter++)
     {
         if (pthread_join(worker_threads[loop_iter], NULL))
         {
